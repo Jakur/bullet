@@ -3,17 +3,23 @@ pub const HIDDEN_SIZE: usize = 512;
 pub const SCALE: i32 = 400;
 pub const QA: i16 = 255;
 pub const QB: i16 = 64;
-const WHITE_FLAT: ValidPiece = ValidPiece(0);
-const BLACK_FLAT: ValidPiece = ValidPiece(1);
-const WHITE_WALL: ValidPiece = ValidPiece(2);
-const BLACK_WALL: ValidPiece = ValidPiece(3);
-const WHITE_CAP: ValidPiece = ValidPiece(4);
-const BLACK_CAP: ValidPiece = ValidPiece(5);
+pub const WHITE_FLAT: ValidPiece = ValidPiece(0);
+pub const BLACK_FLAT: ValidPiece = ValidPiece(1);
+pub const WHITE_WALL: ValidPiece = ValidPiece(2);
+pub const BLACK_WALL: ValidPiece = ValidPiece(3);
+pub const WHITE_CAP: ValidPiece = ValidPiece(4);
+pub const BLACK_CAP: ValidPiece = ValidPiece(5);
 const _ASS: () = assert!(
     WHITE_FLAT.flip_color().0 == BLACK_FLAT.0
         && BLACK_WALL.flip_color().0 == WHITE_WALL.0
         && BLACK_CAP.flip_color().0 == WHITE_CAP.0
 );
+
+pub static NNUE: Network = unsafe {
+    let bytes = include_bytes!("../checkpoints/test-240b/quantised.bin");
+    assert!(bytes.len() == std::mem::size_of::<Network>());
+    std::mem::transmute(*bytes)
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ValidPiece(pub u8);
@@ -53,12 +59,18 @@ impl PieceSquare {
 }
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
-pub struct TakBoard {
+pub struct BoardData {
     pub(crate) caps: [u8; 2],
     pub(crate) data: [PieceSquare; 62], // Each stack must be presented from top to bottom sequentially
     pub(crate) white_to_move: bool,
     pub(crate) score: i16,
     pub(crate) result: u8,
+}
+
+impl BoardData {
+    pub fn minimal(caps: [u8; 2], data: [PieceSquare; 62], white_to_move: bool) -> Self {
+        Self { caps, data, white_to_move, score: 0, result: 0 }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -69,8 +81,8 @@ impl TakSimple6 {
     // Squares + Side + Reserves
     pub const NUM_INPUTS: usize = TakSimple6::SQUARE_INPUTS + 8 + 80; // Pad to 1024
 
-    pub fn handle_features<F: FnMut(usize, usize)>(&self, pos: &TakBoard, mut f: F) {
-        let mut reserves = [31, 31];
+    pub fn handle_features<F: FnMut(usize, usize)>(&self, pos: &BoardData, mut f: F) {
+        let mut reserves: [usize; 2] = [31, 31];
         for (piece, square, depth_idx) in pos.into_iter() {
             let c = (piece.is_white() ^ pos.white_to_move) as usize; // 0 if matches, else 1
             reserves[c] -= 1;
@@ -81,18 +93,23 @@ impl TakSimple6 {
             let ntm = [468, 0][c] + 36 * location + sq;
             f(stm, ntm);
         }
-        f(Self::SQUARE_INPUTS + 8 + reserves[0], Self::SQUARE_INPUTS + 8 + reserves[1]);
+        let white_res_adv = (31 + reserves[0] - reserves[1]).clamp(23, 39);
+        let black_res_adv = (31 + reserves[1] - reserves[0]).clamp(23, 39);
         if pos.white_to_move {
             // White to move
+            f(Self::SQUARE_INPUTS + 8 + reserves[0], Self::SQUARE_INPUTS + 8 + reserves[1]);
+            f(975 + white_res_adv, 975 + black_res_adv);
             f(Self::SQUARE_INPUTS, Self::SQUARE_INPUTS + 1);
         } else {
             // Black to move
+            f(Self::SQUARE_INPUTS + 8 + reserves[1], Self::SQUARE_INPUTS + 8 + reserves[0]);
+            f(975 + black_res_adv, 960 + white_res_adv);
             f(Self::SQUARE_INPUTS + 1, Self::SQUARE_INPUTS);
         }
     }
 }
 
-impl IntoIterator for TakBoard {
+impl IntoIterator for BoardData {
     type Item = (ValidPiece, u8, u8);
     type IntoIter = TakBoardIter;
     fn into_iter(self) -> Self::IntoIter {
@@ -101,7 +118,7 @@ impl IntoIterator for TakBoard {
 }
 
 pub struct TakBoardIter {
-    board: TakBoard,
+    board: BoardData,
     idx: usize,
     last: u8,
     depth: u8,
@@ -180,6 +197,66 @@ impl Accumulator {
     }
 }
 
+pub struct NNUE6 {
+    white: (Incremental, Incremental),
+    black: (Incremental, Incremental),
+}
+
+impl NNUE6 {
+    pub fn incremental_eval(&mut self, takboard: BoardData) -> i32 {
+        let (ours, theirs) = build_features(takboard);
+        let (old_ours, old_theirs) =
+            if takboard.white_to_move { (&self.white.0, &self.white.1) } else { (&self.black.0, &self.black.1) };
+        // Ours
+        let mut ours_acc = Accumulator::from_old(&old_ours.vec);
+        let (sub, add) = ours.diff(&old_ours.state);
+        ours_acc.remove_all(&sub, &NNUE);
+        ours_acc.add_all(&add, &NNUE);
+        let ours = Incremental { state: ours, vec: ours_acc };
+        // Theirs
+        let mut theirs_acc = Accumulator::from_old(&old_theirs.vec);
+        let (sub, add) = theirs.diff(&old_theirs.state);
+        theirs_acc.remove_all(&sub, &NNUE);
+        theirs_acc.add_all(&add, &NNUE);
+        let theirs = Incremental { state: theirs, vec: theirs_acc };
+        // Output
+        let eval = NNUE.evaluate(&ours.vec, &theirs.vec, &ours.state.piece_data, &ours.state.meta);
+        if takboard.white_to_move {
+            self.white = (ours, theirs);
+        } else {
+            self.black = (ours, theirs);
+        }
+        eval
+    }
+    pub(crate) fn manual_eval(takboard: BoardData) -> i32 {
+        let (ours, theirs) = build_features(takboard);
+        let ours = Incremental::fresh_new(&NNUE, ours);
+        let theirs = Incremental::fresh_new(&NNUE, theirs);
+        let eval = NNUE.evaluate(&ours.vec, &theirs.vec, &ours.state.piece_data, &ours.state.meta);
+        eval
+    }
+}
+
+impl Default for NNUE6 {
+    fn default() -> Self {
+        Self {
+            white: (Incremental::fresh_empty(&NNUE), Incremental::fresh_empty(&NNUE)),
+            black: (Incremental::fresh_empty(&NNUE), Incremental::fresh_empty(&NNUE)),
+        }
+    }
+}
+
+fn build_features(takboard: BoardData) -> (IncrementalState, IncrementalState) {
+    let mut ours = Vec::new();
+    let mut theirs = Vec::new();
+    let simple = TakSimple6 {};
+    simple.handle_features(&takboard, |x, y| {
+        ours.push(x as u16);
+        theirs.push(y as u16);
+    });
+    (IncrementalState::from_vec(ours), IncrementalState::from_vec(theirs))
+}
+
 #[inline]
 pub fn screlu(x: i16) -> i32 {
     i32::from(x.clamp(0, QA as i16)).pow(2)
@@ -242,13 +319,21 @@ impl Network {
 }
 
 // Sorry this naming convention is so bad
-pub struct Incremental {
-    pub(crate) state: IncrementalState,
-    pub(crate) vec: Accumulator,
+struct Incremental {
+    state: IncrementalState,
+    vec: Accumulator,
 }
 
 impl Incremental {
-    pub fn fresh_new(net: &Network, data: IncrementalState) -> Self {
+    fn fresh_empty(net: &Network) -> Self {
+        let mut acc = Accumulator::new(net);
+        let inc = IncrementalState::from_vec(vec![0, 1, 2]); // Todo make this cleaner
+        for d in inc.meta {
+            acc.add_feature(d as usize, net);
+        }
+        Self { state: inc, vec: acc }
+    }
+    fn fresh_new(net: &Network, data: IncrementalState) -> Self {
         let mut acc = Accumulator::new(net);
         for d in data.meta {
             acc.add_feature(d as usize, net);
@@ -264,7 +349,7 @@ impl Incremental {
     }
 }
 
-pub struct IncrementalState {
+struct IncrementalState {
     pub(crate) meta: [u16; 3],
     pub(crate) piece_data: [u16; 62],
 }
@@ -321,14 +406,7 @@ impl IncrementalState {
     }
     /// Extend out with values in left which are not present in right
     fn operate(left: &[u16], right: &[u16], out: &mut Vec<u16>) {
-        out.extend(
-            left.iter()
-                .copied()
-                // .inspect(|x| {
-                //     dbg!(x);
-                // })
-                .filter(|x| !right.contains(x)),
-        );
+        out.extend(left.iter().copied().filter(|x| !right.contains(x)));
     }
     fn get_sq(val: u16) -> u16 {
         if val == u16::MAX {
