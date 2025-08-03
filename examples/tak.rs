@@ -288,93 +288,11 @@ fn build_network(inputs: usize, hl: usize) -> (Graph, Node) {
     (builder.build(ExecutionContext::default()), predicted)
 }
 
-fn sanity_check(net_id: &str) -> Result<()> {
-    Ok(())
-    // let inputs = TakSimple6 {};
-    // let num_inputs = inputs.num_inputs();
-
-    // let (graph, output_node) = build_network(num_inputs, HIDDEN_SIZE);
-
-    // let mut trainer = Trainer::<AdamWOptimiser, TakSimple6, outputs::Single>::new(
-    //     graph,
-    //     output_node,
-    //     AdamWParams::default(),
-    //     inputs,
-    //     outputs::Single,
-    //     vec![
-    //         SavedFormat::new("l0w", QuantTarget::I16(255), Layout::Normal),
-    //         SavedFormat::new("l0b", QuantTarget::I16(255), Layout::Normal),
-    //         SavedFormat::new("l1w", QuantTarget::I16(64), Layout::Normal),
-    //         SavedFormat::new("pst", QuantTarget::I16(255), Layout::Normal),
-    //         SavedFormat::new("l1b", QuantTarget::I16(64 * 255), Layout::Normal),
-    //     ],
-    //     false,
-    // );
-    // trainer.load_from_checkpoint(&format!("checkpoints/{net_id}"));
-    // // trainer.save_to_checkpoint("checkpoints/test-240b");
-    // // dbg!(trainer.optimiser().graph().get_weights("l0w").debug_reduce());
-    // // let tps1 = "2,x,x,x,1,1/x,x,2,2,2,12/x,x,2,1,1,1/x,x,2,1C,x,x/x,x,2C,1,x,x/x,x,x,1,x,x 1 10";
-    // let tps1 = "2,1,x,x,x,x/x,2,1C,2,2,x/x,1,2,2C,1,2/x,1,1,2,1,x/x,x,x,1,x,x/x,x,x,x,x,1 2 9";
-    // let board1 = tps1.parse().unwrap();
-    // let score = trainer.eval(tps1);
-    // dbg!(score);
-    // let mut eval = NNUE6::default();
-    // let score_manual = NNUE6::manual_eval(board1);
-    // let score_incremental = eval.incremental_eval(board1);
-    // dbg!(score_manual);
-    // dbg!(score_incremental);
-    // // let tps2 = "2,x3,1,x/x2,2,2,2,121/x2,2,1,1,1/x2,2,1C,x2/x2,2C,1,x2/x3,1,x2 2 10";
-    // // let tps2 = "2,1,x,x,x,x/x,2,1C,2,2,x/x,1,2,2C,1,2/x,1,1,2,1,x/x,x,x,1,x,x/x,x,x,x,x,1 2 9";
-    // let tps2 = "2,1,x,x,x,x/x,2,1C,2,2,x/x,1,2,2C,1,2/x,1,1,2,1,x/x,x,1,x,x,x/x,x,x,x,x,1 2 9";
-    // let board2 = tps2.parse().unwrap();
-    // let score2 = trainer.eval(tps2);
-    // let score_manual2 = NNUE6::manual_eval(board2);
-    // dbg!(score2);
-    // dbg!(score_manual2);
-
-    // let score_incremental2 = eval.incremental_eval(board2);
-    // dbg!(score_incremental2);
-
-    // // Bulk compare
-    // let mut file = File::open("out9.data")?;
-    // let mut buffer = [0; TAKBOARD_SIZE * 512];
-    // file.read(&mut buffer)?;
-    // let buffer = unsafe { std::mem::transmute::<_, [BoardData; 512]>(buffer) };
-    // for b in buffer {
-    //     let manual = NNUE6::manual_eval(b);
-    //     let inc = eval.incremental_eval(b);
-    //     // dbg!(inc);
-    //     assert_eq!(manual, inc);
-    // }
-
-    // Ok(())
-}
-
 fn main() {
-    let convert = false;
     let train_net = true;
-    let check = false;
-    let net_id = "7_15_25";
-    // if convert {
-    //     // convert_text("/home/justin/Code/rust/topaz-eval/games9_new.csv", "out9.data").unwrap();
-    //     // convert_text("/home/justin/Code/rust/topaz-eval/games10_new.csv", "out10.data").unwrap();
-    //     for file in std::fs::read_dir("/media/justin/SSD Ubuntu Stora/tak/db_2024").unwrap() {
-    //         let file = file.unwrap();
-    //         let out = format!("/media/justin/SSD Ubuntu Stora/tak/bullet/{}", file.file_name().to_str().unwrap());
-    //         let path = file.path();
-    //         convert_text(path.as_os_str().to_str().unwrap(), &out).unwrap();
-    //     }
-    //     // convert_text(
-    //     //     "/media/justin/SSD Ubuntu Stora/tak/wilem_ds.csv",
-    //     //     "/media/justin/SSD Ubuntu Stora/tak/bullet.data",
-    //     // )
-    //     // .unwrap();
-    // }
+    let net_id = "7_28_25";
     if train_net {
         train(net_id).unwrap();
-    }
-    if check {
-        sanity_check(net_id).unwrap();
     }
     dbg!("Hello World");
 }
