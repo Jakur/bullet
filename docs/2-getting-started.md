@@ -39,9 +39,10 @@ Building `bullet` requires a C++ compiler (which will be invoked by `nvcc` or `h
     - You may need to specify the environment variable `CXX` or `HOST_CXX` with the compiler name
 
 #### CUDA
-The default backend.
+The default backend when compiling `bullet_lib`.
+- You **should not** enable any features to use this backend
 - Install the [CUDA Toolkit](https://developer.nvidia.com/cuda-toolkit)
-- CUDA version >=12.2 is required.
+- Recommended CUDA version >=12.2 (lower versions can work)
 - The `CUDA_PATH` environment variable must be set to the CUDA install location (should contain the `bin`, `lib` and `include` directories)
 - The system `PATH` should contain `%CUDA_PATH%\bin` (or equivalent for Linux)
 

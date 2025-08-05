@@ -1,0 +1,69 @@
+[package]
+name = "bullet_lib"
+version = "1.0.0"
+description = "Neural Network Trainer"
+authors = { workspace = true }
+license = { workspace = true }
+repository = { workspace = true }
+readme = { workspace = true }
+rust-version = { workspace = true }
+edition = { workspace = true }
+
+[features]
+default = ["hip-cuda"]
+cpu = []
+cuda = ["bullet_cuda_backend"]
+hip = ["bullet_hip_backend", "bullet_hip_backend/hip"]
+hip-cuda = ["bullet_hip_backend"]
+gh-actions = ["bullet_hip_backend/gh-actions"]
+
+[dependencies]
+bullet_cuda_backend = { workspace = true, optional = true }
+bullet_hip_backend = { workspace = true, optional = true }
+bullet_core = { workspace = true }
+bulletformat = { workspace = true }
+montyformat = { workspace = true }
+sfbinpack = "0.4.1"
+viriformat = "2.0.0"
+anyhow = "*"
+zerocopy = {version="0.8", features=["derive", "std"]}
+
+[[example]]
+name = "advanced"
+path = "../../examples/advanced/main.rs"
+
+[[example]]
+name = "simple"
+path = "../../examples/simple.rs"
+
+[[example]]
+name = "test1"
+path = "../../examples/tests/test1.rs"
+
+[[example]]
+name = "test2"
+path = "../../examples/tests/test2.rs"
+
+[[example]]
+name = "akimbo-main"
+path = "../../examples/extra/akimbo-main.rs"
+
+[[example]]
+name = "1_simple"
+path = "../../examples/progression/1_simple.rs"
+
+[[example]]
+name = "2_output_buckets"
+path = "../../examples/progression/2_output_buckets.rs"
+
+[[example]]
+name = "3_input_buckets"
+path = "../../examples/progression/3_input_buckets.rs"
+
+[[example]]
+name = "4_multi_layer"
+path = "../../examples/progression/4_multi_layer.rs"
+
+[[example]]
+name = "tak"
+path = "../../examples/tak.rs"
