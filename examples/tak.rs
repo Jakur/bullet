@@ -127,7 +127,8 @@ fn train(net_id: &str) -> Result<()> {
             end_superbatch: 240,
         },
         wdl_scheduler: wdl::ConstantWDL { value: 0.35 },
-        lr_scheduler: lr::StepLR { start: 0.001, gamma: 0.3, step: 60 },
+        lr_scheduler: lr::CosineDecayLR { initial_lr: 0.001, final_lr: 0.00001, final_superbatch: 240 },
+        // lr_scheduler: lr::StepLR { start: 0.001, gamma: 0.3, step: 60 },
         save_rate: 150,
     };
 
@@ -152,7 +153,7 @@ unsafe impl CanBeDirectlySequentiallyLoaded for ScoredPosition {}
 
 fn main() {
     let train_net = true;
-    let net_id = "8_4_25";
+    let net_id = "8_24_25";
     if train_net {
         train(net_id).unwrap();
     }
