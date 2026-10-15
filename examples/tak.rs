@@ -1,17 +1,13 @@
 use anyhow::Result;
 use bullet_lib::{
-    game::inputs::SparseInputType,
-    nn::optimiser::AdamW,
-    nn::InitSettings,
+    game::{inputs::SparseInputType, outputs::OutputBuckets},
+    nn::{optimiser::AdamW, InitSettings},
     trainer::{
         save::SavedFormat,
         schedule::{lr, wdl, TrainingSchedule, TrainingSteps},
         settings::LocalSettings,
     },
-    value::{
-        loader::{CanBeDirectlySequentiallyLoaded, DirectSequentialDataLoader},
-        ValueTrainerBuilder,
-    },
+    value::{loader::CanBeDirectlySequentiallyLoaded, ValueTrainerBuilder},
     Shape,
 };
 
@@ -82,7 +78,49 @@ impl SparseInputType for TakSimple6 {
     }
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct SideBuckets;
+impl OutputBuckets<ScoredPosition> for SideBuckets {
+    const BUCKETS: usize = 2;
+    fn bucket(&self, pos: &ScoredPosition) -> u8 {
+        if pos.data.white_to_move {
+            0
+        } else {
+            1
+        }
+    }
+}
+
+// // This is stupid and unsound because of how I did the compression.
+// #[derive(Clone, Copy, Default)]
+// pub struct CapstoneOutputBuckets;
+// impl OutputBuckets<ScoredPosition> for CapstoneOutputBuckets {
+//     const BUCKETS: usize = 37;
+
+//     fn bucket(&self, pos: &ScoredPosition) -> u8 {
+//         if pos.data.white_to_move {
+//             std::cmp::min(Self::BUCKETS as u8 - 1, pos.data.caps[0])
+//         } else {
+//             std::cmp::min(Self::BUCKETS as u8 - 1, pos.data.caps[1])
+//         }
+//         36
+//     }
+// }
+
+#[derive(Clone, Copy, Default)]
+pub struct CountBuckets<const N: usize>;
+impl<const N: usize> OutputBuckets<ScoredPosition> for CountBuckets<N> {
+    const BUCKETS: usize = N;
+
+    fn bucket(&self, pos: &ScoredPosition) -> u8 {
+        let num_pieces = pos.data.data_len;
+        let divisor = 64usize.div_ceil(N); // 62
+                                           // (pos.occ().count_ones() as u8 - 2) / divisor as u8
+        num_pieces / divisor as u8
+    }
+}
 fn train(net_id: &str) -> Result<()> {
+    // const NUM_OUTPUT_BUCKETS: usize = 8;
     let inputs = TakSimple6 {};
     let hl = HIDDEN_SIZE;
     let num_inputs = inputs.num_inputs();
@@ -91,24 +129,25 @@ fn train(net_id: &str) -> Result<()> {
         .dual_perspective()
         .optimiser(AdamW)
         .inputs(TakSimple6 {})
+        .output_buckets(SideBuckets)
         .save_format(&[
             SavedFormat::id("l0w").quantise::<i16>(QA),
             SavedFormat::id("l0b").quantise::<i16>(QA),
-            SavedFormat::id("l1w").quantise::<i16>(QB),
+            SavedFormat::id("l1w").quantise::<i16>(QB).transpose(),
             SavedFormat::id("pst").quantise::<i16>(QA),
             SavedFormat::id("l1b").quantise::<i16>(QB * QA),
         ])
         .loss_fn(|output, target| output.sigmoid().squared_error(target))
-        .build(|builder, stm_inputs, ntm_inputs| {
+        .build(|builder, stm_inputs, ntm_inputs, output_buckets| {
             // weights
             let l0 = builder.new_affine("l0", num_inputs, hl);
-            let l1 = builder.new_affine("l1", 2 * hl, 1);
+            let l1 = builder.new_affine("l1", 2 * hl, SideBuckets::BUCKETS);
 
             // inference
             let stm_hidden = l0.forward(stm_inputs).screlu();
             let ntm_hidden = l0.forward(ntm_inputs).screlu();
             let hidden_layer = stm_hidden.concat(ntm_hidden);
-            let out = l1.forward(hidden_layer);
+            let out = l1.forward(hidden_layer).select(output_buckets);
             let psqt = builder.new_weights(
                 "pst",
                 Shape::new(1, num_inputs),
@@ -153,7 +192,7 @@ unsafe impl CanBeDirectlySequentiallyLoaded for ScoredPosition {}
 
 fn main() {
     let train_net = true;
-    let net_id = "8_24_25";
+    let net_id = "8_17_26";
     if train_net {
         train(net_id).unwrap();
     }
