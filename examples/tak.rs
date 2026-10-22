@@ -2,23 +2,18 @@ use anyhow::Result;
 use bullet_lib::{
     game::inputs::SparseInputType,
     nn::optimiser::AdamW,
-    nn::InitSettings,
     trainer::{
         save::SavedFormat,
         schedule::{lr, wdl, TrainingSchedule, TrainingSteps},
         settings::LocalSettings,
     },
-    value::{
-        loader::{CanBeDirectlySequentiallyLoaded, DirectSequentialDataLoader},
-        ValueTrainerBuilder,
-    },
-    Shape,
+    value::{loader::CanBeDirectlySequentiallyLoaded, ValueTrainerBuilder},
 };
 
 use bulletformat::BulletFormat;
 
 mod tak_utils;
-use tak_utils::{BoardData, PieceSquare, TakSimple6, ValidPiece, HIDDEN_SIZE, NNUE6, QA, QB, SCALE};
+use tak_utils::{BoardData, PieceSquare, TakSimple6, ValidPiece, HIDDEN_SIZE, QA, QB, SCALE};
 
 use crate::tak_utils::ScoredPosition;
 
@@ -95,7 +90,7 @@ fn train(net_id: &str) -> Result<()> {
             SavedFormat::id("l0w").quantise::<i16>(QA),
             SavedFormat::id("l0b").quantise::<i16>(QA),
             SavedFormat::id("l1w").quantise::<i16>(QB),
-            SavedFormat::id("pst").quantise::<i16>(QA),
+            // SavedFormat::id("pst").quantise::<i16>(QA),
             SavedFormat::id("l1b").quantise::<i16>(QB * QA),
         ])
         .loss_fn(|output, target| output.sigmoid().squared_error(target))
@@ -109,12 +104,12 @@ fn train(net_id: &str) -> Result<()> {
             let ntm_hidden = l0.forward(ntm_inputs).screlu();
             let hidden_layer = stm_hidden.concat(ntm_hidden);
             let out = l1.forward(hidden_layer);
-            let psqt = builder.new_weights(
-                "pst",
-                Shape::new(1, num_inputs),
-                InitSettings::Normal { mean: 0.0, stdev: 1.0 / (num_inputs as f32).sqrt() },
-            );
-            out + psqt.matmul(stm_inputs)
+            // let psqt = builder.new_weights(
+            //     "pst",
+            //     Shape::new(1, num_inputs),
+            //     InitSettings::Normal { mean: 0.0, stdev: 1.0 / (num_inputs as f32).sqrt() },
+            // );
+            out // + psqt.matmul(stm_inputs)
         });
 
     let schedule = TrainingSchedule {
@@ -126,7 +121,7 @@ fn train(net_id: &str) -> Result<()> {
             start_superbatch: 1,
             end_superbatch: 240,
         },
-        wdl_scheduler: wdl::ConstantWDL { value: 0.35 },
+        wdl_scheduler: wdl::ConstantWDL { value: 0.32 },
         lr_scheduler: lr::CosineDecayLR { initial_lr: 0.001, final_lr: 0.00001, final_superbatch: 240 },
         // lr_scheduler: lr::StepLR { start: 0.001, gamma: 0.3, step: 60 },
         save_rate: 150,
@@ -153,7 +148,7 @@ unsafe impl CanBeDirectlySequentiallyLoaded for ScoredPosition {}
 
 fn main() {
     let train_net = true;
-    let net_id = "8_24_25";
+    let net_id = "10_21_2026";
     if train_net {
         train(net_id).unwrap();
     }
