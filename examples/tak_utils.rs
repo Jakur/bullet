@@ -539,18 +539,20 @@ impl TakSimple6 {
         for (piece, square, depth_idx) in pos.into_iter() {
             let c = (piece.is_white() ^ pos.data.white_to_move) as usize; // 0 if matches, else 1
             reserves[c] -= 1;
-            let location = if depth_idx == 0 {
+            let sq = usize::from(square);
+            if depth_idx == 0 {
                 // top = piece.0;
                 top = c; // Friendly or enemy top
-                usize::from(piece.without_color()) // + depth, but we know it is 0
+                let location = usize::from(piece.without_color()); // + depth, but we know it is 0
+                let stm = [0, Self::HALF][c] + 36 * location + sq;
+                let ntm = [Self::HALF, 0][c] + 36 * location + sq;
+                f(stm, ntm);
             } else {
-                usize::from(depth_idx) + top
+                let location = usize::from(depth_idx); // + top
+                let stm = [0, Self::HALF][c] + 36 * (location + top) + sq;
+                let ntm = [Self::HALF, 0][c] + 36 * (location + [1, 0][top]) + sq;
+                f(stm, ntm);
             };
-            let sq = usize::from(square);
-
-            let stm = [0, Self::HALF][c] + 36 * location + sq;
-            let ntm = [Self::HALF, 0][c] + 36 * location + sq;
-            f(stm, ntm);
         }
         // let white_res_adv = (31 + reserves[0] - reserves[1]).clamp(23, 39);
         // let black_res_adv = (31 + reserves[1] - reserves[0]).clamp(23, 39);

@@ -148,7 +148,7 @@ unsafe impl CanBeDirectlySequentiallyLoaded for ScoredPosition {}
 
 fn main() {
     let train_net = true;
-    let net_id = "10_21_2026";
+    let net_id = "10_23_2026";
     if train_net {
         train(net_id).unwrap();
     }
